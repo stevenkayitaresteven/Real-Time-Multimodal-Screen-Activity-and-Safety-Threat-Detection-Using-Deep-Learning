@@ -10,3 +10,7 @@ runs/
 exports/
 *.log
 !docs/results/
+# project report: generated documents and personal details stay local
+report/*.pdf
+report/*.docx
+report/assets/
