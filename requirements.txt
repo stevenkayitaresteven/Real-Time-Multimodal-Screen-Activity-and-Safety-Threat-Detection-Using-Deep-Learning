@@ -1,0 +1,11 @@
+torch>=2.1
+torchvision>=0.16
+numpy>=1.24
+pillow>=10.1
+pyyaml>=6.0
+onnx>=1.15
+onnxruntime>=1.17
+mss>=9.0              # live screen capture
+opencv-python>=4.8    # optional: video files as input
+pytest>=7
+# System dependency for OCR: Tesseract (apt install tesseract-ocr | brew install tesseract | UB-Mannheim build on Windows)

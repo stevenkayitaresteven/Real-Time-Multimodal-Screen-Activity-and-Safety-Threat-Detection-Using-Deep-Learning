@@ -1,0 +1,41 @@
+# Main multimodal model: TinyCNN vision + byte-level Transformer text + attention fusion.
+data:
+  train_manifests: [data/synth/train/manifest.jsonl, data/synth/train2/manifest.jsonl]
+  val_manifests: [data/synth/val/manifest.jsonl]
+  test_manifests: [data/synth/test/manifest.jsonl]
+  # nsfw_root: data/nsfw          # ImageFolder: data/nsfw/{train,val}/{safe,suggestive,explicit}/
+  nsfw_composite_p: 0.7
+  img_size: [144, 256]
+  max_text_len: 1024
+  text_field: text
+  ocr_noise_p: 0.03
+  preload: true
+  augment: true
+model:
+  vision: tiny_cnn
+  pretrained: false
+  dim: 128
+  text_depth: 2
+  text_heads: 4
+  text_downsample: 8
+  text_stem: ngram
+  fusion: attention
+  fusion_depth: 2
+  fusion_heads: 4
+  modalities: [image, text]
+  dropout: 0.1
+  modality_dropout: 0.15
+train:
+  epochs: 6
+  batch_size: 64
+  lr: 0.002
+  weight_decay: 0.05
+  warmup_frac: 0.05
+  label_smoothing: 0.05
+  task_weighting: uncertainty
+  grad_clip: 1.0
+  num_workers: 0
+  seed: 0
+  out_dir: runs/main
+  early_stop_patience: 4
+  log_every: 0
