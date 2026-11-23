@@ -115,14 +115,109 @@ recipe must be applied with real OCR'd frames.
 
 
 
-<!-- ABLATIONS -->
+## 3. Ablation study
+Each variant changes one factor of the main configuration. All variants share a deliberately small budget, **4 000
+training screens and 3 epochs from scratch**, so that differences are not hidden by saturation. Each is evaluated on
+the 1 500-screen synthetic test set (clean text, 10 % OCR noise, no text) and on the 300-frame 720p set with real
+Tesseract OCR. Each variant was trained once (one seed), so treat differences under ~0.02 as noise.
+
+```bash
+python scripts/run_ablations.py --epochs 3   # ~25 min on 4 CPU cores
+```
+
+| Variant | Params | Activity acc | Threat F1 | Threat AUROC | Activity acc (real OCR) | Threat F1 (real OCR) | Threat F1 (10 % OCR noise) | Activity acc (no text) | Threat F1 (no text) |
+|---|---|---|---|---|---|---|---|---|---|
+| attention (main config) | 1.28 M | 0.997 | 0.912 | 0.986 | 0.957 | 0.881 | 0.822 | 0.414 | 0.222 |
+| image_only | 0.79 M | 0.866 | 0.330 | 0.726 | 0.897 | 0.335 | 0.330 | 0.866 | 0.330 |
+| text_only | 0.94 M | 0.997 | 0.969 | 0.997 | 0.950 | 0.911 | 0.888 | 0.109 | 0.153 |
+| concat_fusion | 0.92 M | 0.994 | 0.955 | 0.995 | 0.963 | 0.902 | 0.906 | 0.547 | 0.268 |
+| gated_fusion | 0.95 M | 0.998 | 0.976 | 0.998 | 0.957 | 0.947 | 0.908 | 0.617 | 0.218 |
+| vit_tiny | 2.92 M | 0.992 | 0.876 | 0.981 | 0.927 | 0.801 | 0.793 | 0.265 | 0.153 |
+| mobilenet_v3_small | 1.94 M | 0.996 | 0.954 | 0.995 | 0.937 | 0.922 | 0.876 | 0.106 | 0.153 |
+| no_modality_dropout | 1.28 M | 0.995 | 0.944 | 0.990 | 0.950 | 0.879 | 0.861 | 0.186 | 0.228 |
+| strided_text_stem | 1.50 M | 0.979 | 0.578 | 0.848 | 0.803 | 0.495 | 0.551 | 0.617 | 0.192 |
+
+Decision fusion on clean text. Rules-only is the same for every variant (F1 0.867):
+
+| Variant | Rules-only threat F1 | Hybrid threat F1 | Hybrid FPR |
+|---|---|---|---|
+| attention (main config) | 0.867 | 0.947 | 0.048 |
+| image_only | 0.867 | 0.834 | 0.233 |
+| text_only | 0.867 | 0.980 | 0.013 |
+| concat_fusion | 0.867 | 0.975 | 0.025 |
+| gated_fusion | 0.867 | 0.987 | 0.004 |
+| vit_tiny | 0.867 | 0.930 | 0.051 |
+| mobilenet_v3_small | 0.867 | 0.976 | 0.007 |
+| no_modality_dropout | 0.867 | 0.970 | 0.023 |
+| strided_text_stem | 0.867 | 0.842 | 0.162 |
+
+![Ablations](figures/ablations.png)
+![Robustness](figures/robustness_threat.png)
+![Robustness](figures/robustness_activity.png)
+
+**Findings**
+1. **Multimodal beats either modality alone, if fused well.** Image-only cannot detect threats (F1 0.33), and
+   text-only collapses when OCR fails (activity 0.11 without text). Gated fusion is the best model at this budget:
+   threat F1 0.976 on clean text and 0.947 with real OCR, and in hybrid mode 0.987 at a 0.4 % false-positive rate.
+2. **Attention fusion is data-hungry.** With 4k screens and 3 epochs it trails gated and concat fusion (0.912). With 16k
+   screens and 6 epochs (§1) it reaches 0.994. For very small datasets, use `fusion=gated`, which is also ~40 % faster
+   (§4).
+3. **CNN > ViT at this data scale.** ViT-tiny (2.9 M params) is the weakest image backbone (threat F1 0.876, real-OCR
+   activity 0.927) and the slowest. This is the expected result for ViTs without pretraining or large data.
+   MobileNetV3-Small does better than TinyCNN on threats at this budget (0.954 vs 0.912), but its encoder is 3× larger
+   (1.0 M vs 0.34 M) and the model is ~18 % slower. With more data (§1), TinyCNN already saturates the synthetic
+   task, so the backbone choice should be revisited on real screens.
+4. **Modality dropout fights "modality laziness".** Without modality dropout, the multimodal model leans almost
+   entirely on text: activity accuracy with no text is 0.19. Dropout more than doubles that to 0.41, at a small cost on
+   clean text (0.944 → 0.912 threat F1 at this budget). The weak no-text numbers of all fusion models show the
+   known tendency of multimodal networks to under-use the weaker modality. Stronger remedies, such as higher
+   dropout, auxiliary unimodal heads, or gradient modulation, are listed as future work.
+5. **The text stem matters most.** The patch-style strided byte stem reaches only 0.578 threat F1 against 0.912 for
+   the n-gram + max-pool stem, with the same data and epochs. The difference is shift invariance.
+6. **The hybrid helps every reasonable model.** Rules add the most to weaker models (+0.035 for attention at this
+   budget), but they also amplify a bad model's false positives (image-only: 23 % FPR).
+
 
 ## 4. Real-time performance
 ```bash
 screenguard benchmark --variants tiny_cnn/attention tiny_cnn/gated tiny_cnn/concat mobilenet_v3_small/attention vit_tiny/attention efficientnet_b0/attention --threads 1 4
 ```
 
-<!-- BENCHMARK -->
+Mean latency per frame (batch 1, input 144×256 plus 1 024 text bytes). Measured with random but symmetry-broken
+weights, whose file sizes match the trained exports.
+
+| Model | Threads | Params | ONNX fp32 / int8 size | PyTorch ms | ONNX fp32 ms | ONNX int8 ms |
+|---|---|---|---|---|---|---|
+| tiny_cnn / attention | 1 | 1.28 M | 5.1 / 2.8 MB | 10.6 | 7.3 | 6.0 |
+| tiny_cnn / attention | 4 | 1.28 M | 5.1 / 2.8 MB | 7.8 | 4.5 | 4.1 |
+| tiny_cnn / gated | 1 | 0.95 M | 3.7 / 2.3 MB | 7.8 | 4.4 | 3.9 |
+| tiny_cnn / gated | 4 | 0.95 M | 3.7 / 2.3 MB | 6.0 | 2.8 | 2.8 |
+| tiny_cnn / concat | 1 | 0.92 M | 3.6 / 2.3 MB | 8.0 | 4.6 | 3.9 |
+| tiny_cnn / concat | 4 | 0.92 M | 3.6 / 2.3 MB | 6.4 | 3.0 | 2.8 |
+| mobilenet_v3_small / attention | 1 | 1.94 M | 7.6 / 5.3 MB | 13.7 | 8.6 | 6.7 |
+| mobilenet_v3_small / attention | 4 | 1.94 M | 7.6 / 5.3 MB | 9.6 | 4.7 | 4.7 |
+| vit_tiny / attention | 1 | 2.92 M | 11.4 / 4.1 MB | 19.9 | 16.2 | 11.7 |
+| vit_tiny / attention | 4 | 2.92 M | 11.4 / 4.1 MB | 9.2 | 8.1 | 6.9 |
+| efficientnet_b0 / attention | 1 | 5.11 M | 19.7 / 17.4 MB | 33.3 | 15.4 | 14.2 |
+| efficientnet_b0 / attention | 4 | 5.11 M | 19.7 / 17.4 MB | 16.0 | 8.6 | 8.0 |
+
+Pipeline stages on a 1280×720 frame:
+
+| Stage | mean ms | p95 ms |
+|---|---|---|
+| change_detector | 3.43 | 4.01 |
+| preprocess_letterbox | 1.52 | 1.62 |
+| tokenize | 0.02 | 0.03 |
+| rules_and_urls | 1.28 | 1.30 |
+| ocr_tesseract_720p | 333.72 | 339.57 |
+
+![Latency](figures/latency.png)
+
+* The model is cheap: **7.3 ms (fp32) / 6.0 ms (int8) on one thread** for the main model, and 3.9 ms for gated fusion.
+  That is over 100 frames per second of model capacity on a single core.
+* OCR costs about 45× the model. Skipping unchanged frames and running OCR asynchronously matter more for battery and
+  latency than any model optimisation.
+
 
 ### End-to-end session (`screenguard monitor --source synthetic:5 --ocr tesseract`)
 This scripted session has 13 screens, each shown for 5 frames: 8 benign screens and 5 threats. Full output is in
@@ -159,9 +254,12 @@ This scripted session has 13 screens, each shown for 5 frames: 8 benign screens 
    phishing alert had fired shortly before.
 5. **int8 is not automatically faster.** ONNX Runtime's default dynamic quantisation also converts convolutions, and
    on this x86 CPU `ConvInteger` made the model **2–3× slower** than fp32. Quantising only MatMul/Gemm keeps
-   accuracy (100 % arg-max agreement) and halves the file size, but gives no meaningful speed-up for this small,
-   convolution-heavy model. Larger gains need static QDQ quantisation, or ARM CPUs with int8 dot-product
+   accuracy (100 % arg-max agreement), shrinks the file 1.8×, and is 10–28 % faster on one thread. The gain is largest
+   for the Transformer-heavy ViT. Larger gains need static QDQ quantisation, or ARM CPUs with int8 dot-product
    instructions.
+8. **Benchmark freshly initialised models with care.** `nn.TransformerEncoder` deep-copies one layer N times, so
+   untrained models have identical layer weights. The ONNX exporter then de-duplicates them, giving a smaller,
+   cache-friendlier and unrealistically fast graph. The benchmark perturbs weights to avoid this.
 6. **PyTorch eager dynamic quantisation breaks `nn.TransformerEncoder`.** The quantised `Linear.weight` becomes a
    method, which trips the encoder's fast-path checks, and the API is being deprecated. ONNX Runtime is the
    recommended quantised path.

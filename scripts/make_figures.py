@@ -86,7 +86,8 @@ def ablation_bars(abl):
         for yi, v in zip(y, vals):
             ax.text(v + 0.005, yi, f"{v:.3f}", va="center", fontsize=8, color=INK2)
         ax.set_yticks(y, names)
-        ax.invert_yaxis()
+        if ax is axes[0]:  # axes share y: invert once, or the second call flips it back
+            ax.invert_yaxis()
         lo = max(0.0, min(vals) - 0.1)
         ax.set_xlim(lo, 1.02)
         ax.grid(axis="y", visible=False)
@@ -105,7 +106,7 @@ def robustness(abl):
         for k, (c, label) in enumerate(conds):
             vals = [abl[n]["conditions"][c].get(key) or 0 for n in keep]
             ax.bar(x + (k - 1) * w, vals, width=w, color=SERIES[k], edgecolor=SURFACE, linewidth=2, label=label)
-        ax.set_xticks(x, [n.replace("_", " ") for n in keep], fontsize=9)
+        ax.set_xticks(x, [n.replace("_", " ").replace(" (", "\n(").replace("no modality", "no modality\n") for n in keep], fontsize=9)
         ax.set_ylim(0, 1.05)
         ax.grid(axis="x", visible=False)
         ax.legend(frameon=False, ncols=3, loc="lower left", bbox_to_anchor=(0, 1.0), borderaxespad=0.3)

@@ -85,6 +85,7 @@ screenguard evaluate --checkpoint runs/main/best.pt --out runs/main/test_metrics
 screenguard export --checkpoint runs/main/best.pt --out exports/screenguard.onnx
 ```
 ```bash
+# For deployment, prefer the OCR-aware fine-tuned model (configs/finetune_ocr.yaml, docs/EXPERIMENTS.md §2).
 # 5a. Watch a scripted synthetic session (no screen access needed)
 screenguard monitor --model exports/screenguard.int8.onnx --source synthetic --ocr tesseract
 ```
@@ -114,7 +115,7 @@ screenguard/
   explain/gradcam.py       Grad-CAM + text saliency
   training.py evaluate.py calibration.py metrics.py export.py benchmark.py privacy.py cli.py
 configs/default.yaml       main experiment configuration
-scripts/run_ablations.py   ablation study (modalities, fusion, backbone, regularisation)
+scripts/                   reproduce.sh, run_ablations.py, evaluate_main.py, make_figures.py
 docs/                      ARCHITECTURE, DATASETS, ETHICS, EXPERIMENTS (+ results/)
 tests/                     pytest suite (data, models, analysis, real-time, end-to-end)
 ```
@@ -147,7 +148,16 @@ All 5 threats raised an alert within 2 frames, with reasons, and there were 0 fa
 |---|---|
 | ![latency](docs/figures/latency.png) | ![gradcam](docs/figures/gradcam_examples.png) |
 
-<!-- README_ABLATIONS -->
+**Ablations** (4k screens, 3 epochs, one factor at a time; full tables in
+[docs/EXPERIMENTS.md §3](docs/EXPERIMENTS.md#3-ablation-study)):
+- Multimodal fusion beats either modality alone. Image-only can't detect threats (F1 0.33), and text-only collapses
+  when OCR fails. **Gated fusion** is the best small-data choice: threat F1 0.976, 0.947 with real OCR, and
+  0.987 hybrid at 0.4 % FPR.
+- **CNN > ViT** without pretraining at this data scale (ViT-tiny threat F1 0.876).
+- **Modality dropout** doubles visual-only robustness (activity accuracy without text 0.19 → 0.41).
+- The **n-gram + max-pool byte stem** beats a patch-style strided stem by a wide margin (threat F1 0.912 vs 0.578).
+
+![ablations](docs/figures/ablations.png)
 
 
 ## Using real data
