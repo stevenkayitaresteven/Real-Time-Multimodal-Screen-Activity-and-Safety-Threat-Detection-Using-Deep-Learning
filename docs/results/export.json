@@ -1,0 +1,14 @@
+{
+  "onnx": "exports/screenguard.onnx",
+  "onnx_mb": 5.066,
+  "onnx_check": {
+    "max_abs_diff": 4e-06,
+    "argmax_agreement": 1.0
+  },
+  "onnx_int8": "exports/screenguard.int8.onnx",
+  "onnx_int8_mb": 2.772,
+  "onnx_int8_check": {
+    "max_abs_diff": 0.055841,
+    "argmax_agreement": 1.0
+  }
+}

@@ -1,0 +1,57 @@
+Monitoring synthetic:5 at <= 0.0 fps with onnx / OCR=tesseract (Ctrl+C to stop). Frames are processed on-device and never stored.
+[00000] activity=document_editing  (1.00) threat=benign risk=0.00 | 532 ms
+[00005] activity=web_browsing      (0.60) threat=benign risk=0.00 | 542 ms
+[00010] activity=email             (0.60) threat=benign risk=0.00 | 598 ms
+[00015] activity=email             (1.00) threat=phishing risk=0.60 | 505 ms
+[00017] (unchanged) activity=email             (1.00) threat=phishing risk=0.94 | 4 ms
+  ⚠ ALERT [threat] phishing (score 0.94)
+      - coinbase1-support.net: mentions 'Coinbase' but is not an official Coinbase domain
+      - threatens account suspension
+      - asks you to verify account details
+[00020] activity=code_editor       (0.60) threat=benign risk=0.40 | 303 ms
+[00022] (unchanged) activity=code_editor       (0.94) threat=benign risk=0.06 | 3 ms
+  ✓ cleared [threat] phishing
+[00025] activity=web_browsing      (0.60) threat=benign risk=0.00 | 305 ms
+[00030] activity=terminal          (0.60) threat=benign risk=0.60 | 275 ms
+[00032] (unchanged) activity=terminal          (0.94) threat=suspicious_command risk=0.94 | 4 ms
+  ⚠ ALERT [threat] suspicious_command (score 0.94)
+      - downloads and executes code in memory
+      - 192.0.2.181: uses a raw IP address instead of a domain name
+      - 192.0.2.181: link downloads an executable file (ps1)
+[00035] activity=video_streaming   (0.60) threat=benign risk=0.40 | 359 ms
+[00037] (unchanged) activity=video_streaming   (0.94) threat=benign risk=0.06 | 3 ms
+  ✓ cleared [threat] suspicious_command
+[00040] activity=web_browsing      (0.60) threat=scam risk=0.60 | 287 ms
+[00042] (unchanged) activity=web_browsing      (0.94) threat=scam risk=0.94 | 4 ms
+  ⚠ ALERT [threat] scam (score 0.94)
+      - prize / giveaway lure
+      - pc-fix-8cc83.click: top-level domain '.click' is frequently abused
+      - pc-fix-8cc83.click: connection is not encrypted (http)
+[00045] activity=messaging         (0.60) threat=benign risk=0.40 | 413 ms
+[00047] (unchanged) activity=messaging         (0.94) threat=benign risk=0.06 | 4 ms
+  ✓ cleared [threat] scam
+[00050] activity=file_download     (0.60) threat=malware_download risk=0.60 | 279 ms
+[00052] (unchanged) activity=file_download     (0.94) threat=malware_download risk=0.94 | 4 ms
+  ⚠ ALERT [threat] malware_download (score 0.94)
+[00055] activity=social_media      (0.60) threat=benign risk=0.40 | 445 ms
+[00057] (unchanged) activity=social_media      (0.94) threat=benign risk=0.07 | 3 ms
+  ✓ cleared [threat] malware_download
+[00060] activity=web_browsing      (0.60) threat=phishing risk=0.61 | 254 ms
+[00062] (unchanged) activity=web_browsing      (0.94) threat=phishing risk=0.94 | 3 ms
+  ⚠ ALERT [threat] phishing (score 0.94)
+      - asks you to verify account details
+{
+  "frames": 65,
+  "analyzed": 13,
+  "skipped_unchanged": 52,
+  "latency_ms_mean": {
+    "change": 3.72,
+    "ocr": 377.57,
+    "preprocess": 3.05,
+    "model": 6.83,
+    "rules": 0.9,
+    "total": 392.19
+  },
+  "latency_ms_p95_total": 564.53
+}
+alerts raised: 5

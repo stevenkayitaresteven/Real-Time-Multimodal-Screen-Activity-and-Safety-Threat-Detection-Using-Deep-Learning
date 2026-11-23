@@ -1,0 +1,40 @@
+# OCR-aware fine-tuning: adapt the main model to the text produced by the OCR engine you deploy.
+# Prerequisites (see docs/EXPERIMENTS.md §2):
+#   screenguard generate --out data/synth_hires ... (1280x720) and screenguard ocr-manifest ... -> manifest_ocr.jsonl
+#   split it into ft_train / ft_val manifests.
+# Records without `ocr_text` (the original synthetic set) fall back to ground-truth `text`.
+data:
+  train_manifests: [data/synth/train/manifest.jsonl, data/synth/train_hires/ft_train.jsonl]
+  val_manifests: [data/synth/val/manifest.jsonl, data/synth/train_hires/ft_val.jsonl]
+  test_manifests: [data/synth/test_hires/manifest_ocr.jsonl]
+  img_size: [144, 256]
+  max_text_len: 1024
+  text_field: ocr_text
+  ocr_noise_p: 0.03
+  preload: true
+  augment: true
+model:
+  vision: tiny_cnn
+  dim: 128
+  text_depth: 2
+  text_heads: 4
+  text_downsample: 8
+  text_stem: ngram
+  fusion: attention
+  fusion_depth: 2
+  fusion_heads: 4
+  modalities: [image, text]
+  dropout: 0.1
+  modality_dropout: 0.15
+train:
+  init_checkpoint: runs/main/best.pt
+  epochs: 2
+  batch_size: 64
+  lr: 0.0005
+  warmup_frac: 0.1
+  weight_decay: 0.05
+  label_smoothing: 0.05
+  task_weighting: uncertainty
+  out_dir: runs/ocr_finetune
+  early_stop_patience: 2
+  log_every: 0
