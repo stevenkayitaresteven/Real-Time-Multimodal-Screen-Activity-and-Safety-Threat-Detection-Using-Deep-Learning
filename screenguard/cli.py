@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -71,7 +72,7 @@ def _build_analyzer(a: argparse.Namespace):
     from .realtime.backends import load_backend
     from .realtime.pipeline import AnalyzerConfig, ScreenAnalyzer
 
-    backend = load_backend(a.model, threads=a.threads, quantize=getattr(a, "quantize", False))
+    backend = load_backend(a.model, threads=a.threads)
     cfg = AnalyzerConfig(decision=a.decision, async_ocr=getattr(a, "async_ocr", False))
     if hasattr(a, "min_on"):
         cfg.min_on = a.min_on
@@ -157,10 +158,13 @@ def _cmd_ocr_manifest(a: argparse.Namespace) -> None:
     ocr = TesseractOCR()
     recs = read_manifest(a.manifest)[: a.limit or None]
 
+    out_dir = Path(a.out).resolve().parent
+
     def run(r):
         with Image.open(r["image"]) as im:
             res = ocr.read(im.convert("RGB"))
-        return {**r, "ocr_text": res.text, "ocr_ms": round(res.latency_ms, 1)}
+        rel = os.path.relpath(r["image"], out_dir)  # keep the manifest relocatable
+        return {**r, "image": rel, "ocr_text": res.text, "ocr_ms": round(res.latency_ms, 1)}
 
     with ThreadPoolExecutor(a.workers) as ex:
         out = list(ex.map(run, recs))
@@ -222,7 +226,6 @@ def main(argv: Optional[List[str]] = None) -> None:
         sp.add_argument("--ocr", default="auto", choices=["auto", "tesseract", "none"])
         sp.add_argument("--decision", default="hybrid", choices=["model", "rules", "hybrid"])
         sp.add_argument("--threads", type=int, default=None)
-        sp.add_argument("--quantize", action="store_true", help="dynamic int8 quantisation (PyTorch backend)")
 
     an = sub.add_parser("analyze", help="analyse screenshot(s)")
     an.add_argument("images", nargs="+")

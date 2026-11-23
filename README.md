@@ -120,7 +120,35 @@ tests/                     pytest suite (data, models, analysis, real-time, end-
 ```
 
 ## Results
-<!-- RESULTS -->
+All numbers below were measured on a 4-core CPU without a GPU. Full protocol, ablations and caveats are in
+[docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
+
+> ⚠️ Training and test data are **synthetic** (different random seeds, same generator). Treat these numbers as
+> evidence that the system works end to end, not as real-world accuracy.
+
+**Main model**: TinyCNN + byte n-gram Transformer + attention fusion, 1.28 M parameters, trained on 16k screens.
+
+| Test condition | Activity acc | Threat macro-F1 | Any-threat AUROC |
+|---|---|---|---|
+| synthetic test, clean text | 1.000 | 0.994 (hybrid 0.995) | 0.998 |
+| 10 % simulated OCR noise | 0.989 | 0.952 | 0.987 |
+| **real Tesseract OCR, 720p frames** | **0.950** | **0.971** (hybrid 0.975) | **0.997** |
+| no text (OCR failure) | 0.787 | 0.247 | 0.673 |
+
+**OCR-aware fine-tuning** (2 epochs on Tesseract output, ~7 min on CPU) closes the real-OCR gap. On the 720p
+real-OCR test, activity accuracy rises from 0.950 to **1.000** and threat macro-F1 from 0.971 to **0.992** (hybrid
+**0.996**, 0.5 % false-positive rate), with no regression on clean text.
+
+**Real time**: the model takes **7 ms per frame on one CPU thread** (ONNX Runtime). In a scripted session with real
+OCR, **80 % of frames were skipped** by the change detector, and analysed frames took ~390 ms, almost all of it OCR.
+All 5 threats raised an alert within 2 frames, with reasons, and there were 0 false alerts on 8 benign screens.
+
+| | |
+|---|---|
+| ![latency](docs/figures/latency.png) | ![gradcam](docs/figures/gradcam_examples.png) |
+
+<!-- README_ABLATIONS -->
+
 
 ## Using real data
 The synthetic generator is a development and pre-training tool. For real-world performance, mix in real screenshots,

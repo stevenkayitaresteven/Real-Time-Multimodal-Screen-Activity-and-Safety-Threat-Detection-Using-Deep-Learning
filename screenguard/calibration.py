@@ -11,7 +11,15 @@ import torch
 import torch.nn.functional as F
 
 
-def fit_temperature(logits: np.ndarray, labels: np.ndarray, max_iter: int = 200) -> float:
+def fit_temperature(logits: np.ndarray, labels: np.ndarray, max_iter: int = 200, t_min: float = 0.25,
+                    t_max: float = 10.0) -> float:
+    """Fit a single temperature by minimising validation NLL.
+
+    The result is clamped to ``[t_min, t_max]``: when the validation set is
+    (almost) perfectly classified, NLL keeps decreasing as T -> 0, and an
+    unbounded fit would make the model wildly over-confident on
+    out-of-distribution screens.
+    """
     if len(labels) == 0:
         return 1.0
     z = torch.as_tensor(logits, dtype=torch.float64)
@@ -26,5 +34,5 @@ def fit_temperature(logits: np.ndarray, labels: np.ndarray, max_iter: int = 200)
         return loss
 
     opt.step(closure)
-    t = float(log_t.detach().exp().clamp(0.05, 20.0))
+    t = float(log_t.detach().exp().clamp(t_min, t_max))
     return t if np.isfinite(t) else 1.0

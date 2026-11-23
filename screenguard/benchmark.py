@@ -1,8 +1,8 @@
 """Latency / size benchmarks for edge deployment decisions.
 
-Latency does not depend on trained weights, so architecture variants are
-benchmarked with randomly initialised models; this allows comparing
-backbones and runtimes without training each one.
+Latency does not depend on the values of trained weights, so architecture
+variants are benchmarked with randomly initialised (symmetry-broken) models;
+this allows comparing backbones and runtimes without training each one.
 """
 from __future__ import annotations
 
@@ -44,13 +44,20 @@ def _inputs(img_size: Tuple[int, int], max_len: int, batch: int = 1):
 
 def benchmark_variant(vision: str, fusion: str = "attention", modalities: Sequence[str] = ("image", "text"),
                       img_size: Tuple[int, int] = (144, 256), max_len: int = 1024, threads: int = 1, n: int = 50,
-                      runtimes: Sequence[str] = ("torch", "torch-int8", "onnx", "onnx-int8"),
+                      runtimes: Sequence[str] = ("torch", "onnx", "onnx-int8"),
                       model: Optional[torch.nn.Module] = None) -> Dict:
     torch.set_num_threads(threads)
     if model is None:
         cfg = Config()
         cfg.model.vision, cfg.model.fusion, cfg.model.modalities = vision, fusion, list(modalities)
         model = build_model(cfg.model, TASKS, img_size, max_len)
+        # nn.TransformerEncoder deep-copies one layer N times, so a fresh model has identical layer weights that
+        # the ONNX exporter de-duplicates -> an unrealistically small memory footprint. Break the symmetry so
+        # the benchmarked graph matches a trained model.
+        g = torch.Generator().manual_seed(0)
+        with torch.no_grad():
+            for prm in model.parameters():
+                prm.add_(torch.randn(prm.shape, generator=g) * 1e-3)
     model.eval()
     img, ids = _inputs(img_size, max_len)
     ti, tids = torch.from_numpy(img), torch.from_numpy(ids)
@@ -60,13 +67,6 @@ def benchmark_variant(vision: str, fusion: str = "attention", modalities: Sequen
     if "torch" in runtimes:
         with torch.inference_mode():
             row["torch"] = time_fn(lambda: wrapper(ti, tids), n)
-    if "torch-int8" in runtimes:
-        try:
-            qm = torch.ao.quantization.quantize_dynamic(wrapper, {torch.nn.Linear}, dtype=torch.qint8)
-            with torch.inference_mode():
-                row["torch-int8"] = time_fn(lambda: qm(ti, tids), n)
-        except Exception as exc:  # pragma: no cover
-            row["torch-int8"] = {"error": str(exc)[:80]}
     if any(r.startswith("onnx") for r in runtimes):
         import warnings
 
@@ -89,7 +89,7 @@ def benchmark_variant(vision: str, fusion: str = "attention", modalities: Sequen
                 from onnxruntime.quantization import QuantType, quantize_dynamic
 
                 q = Path(d) / "m.int8.onnx"
-                quantize_dynamic(str(p), str(q), weight_type=QuantType.QInt8)
+                quantize_dynamic(str(p), str(q), weight_type=QuantType.QInt8, op_types_to_quantize=["MatMul", "Gemm"])
                 row["onnx_int8_mb"] = round(q.stat().st_size / 2**20, 2)
                 s = ort.InferenceSession(str(q), opts, providers=["CPUExecutionProvider"])
                 row["onnx-int8"] = time_fn(lambda: s.run(None, feeds), n)
@@ -125,7 +125,7 @@ def benchmark_components(n: int = 20, with_ocr: bool = True) -> Dict:
 
 def to_markdown(rows: List[Dict]) -> str:
     cols = ["vision", "fusion", "modalities", "threads", "params_m", "onnx_mb", "onnx_int8_mb"]
-    rts = ["torch", "torch-int8", "onnx", "onnx-int8"]
+    rts = ["torch", "onnx", "onnx-int8"]
     head = cols + [f"{r} mean/p95 ms" for r in rts]
     lines = ["| " + " | ".join(head) + " |", "|" + "---|" * len(head)]
     for r in rows:

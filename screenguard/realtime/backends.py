@@ -1,6 +1,6 @@
 """Inference backends with a common ``infer(image, ids) -> {task: logits}`` API.
 
-* :class:`TorchBackend` – PyTorch checkpoint (optionally dynamic-int8 quantised).
+* :class:`TorchBackend` – PyTorch checkpoint (development, explanations).
 * :class:`OnnxBackend`  – ONNX Runtime (fp32 or int8), the deployment path for
   Windows/macOS/Linux/Android/iOS without a PyTorch dependency.
 """
@@ -21,7 +21,7 @@ class Backend:
 
 
 class TorchBackend(Backend):
-    def __init__(self, checkpoint: str, device: str = "cpu", threads: Optional[int] = None, quantize: bool = False):
+    def __init__(self, checkpoint: str, device: str = "cpu", threads: Optional[int] = None):
         import torch
 
         from ..training import load_checkpoint
@@ -29,8 +29,6 @@ class TorchBackend(Backend):
         if threads:
             torch.set_num_threads(threads)
         model, ck = load_checkpoint(checkpoint, map_location=device)
-        if quantize:
-            model = torch.ao.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=torch.qint8)
         self.torch = torch
         self.device = torch.device(device)
         self.model = model.to(self.device).eval()
@@ -38,7 +36,7 @@ class TorchBackend(Backend):
         self.meta = {"tasks": ck["tasks"], "tasks_trained": ck.get("tasks_trained", list(ck["tasks"])),
                      "temperatures": ck.get("temperatures", {}), "img_size": list(cfg.data.img_size),
                      "max_text_len": cfg.data.max_text_len, "modalities": list(cfg.model.modalities),
-                     "vision": cfg.model.vision, "fusion": cfg.model.fusion, "backend": "torch" + ("-int8" if quantize else "")}
+                     "vision": cfg.model.vision, "fusion": cfg.model.fusion, "backend": "torch"}
 
     def infer(self, image: np.ndarray, ids: np.ndarray) -> Dict[str, np.ndarray]:
         t = self.torch
@@ -74,4 +72,4 @@ class OnnxBackend(Backend):
 def load_backend(path: str, **kw) -> Backend:
     if str(path).endswith(".onnx"):
         return OnnxBackend(path, threads=kw.get("threads"))
-    return TorchBackend(path, device=kw.get("device", "cpu"), threads=kw.get("threads"), quantize=kw.get("quantize", False))
+    return TorchBackend(path, device=kw.get("device", "cpu"), threads=kw.get("threads"))

@@ -35,9 +35,23 @@ def test_alert_hysteresis_and_cooldown():
     assert sm.update(0.1, "phishing", 3) is None
     ev = sm.update(0.1, "phishing", 4)
     assert ev and ev.status == "cleared"
-    sm.update(0.9, "scam", 5)
-    assert sm.update(0.9, "scam", 6) is None              # still inside cooldown
-    assert sm.update(0.9, "scam", 12).status == "raised"
+    sm.update(0.9, "phishing", 5)
+    assert sm.update(0.9, "phishing", 6) is None          # same label: still inside cooldown
+    assert sm.update(0.9, "phishing", 12).status == "raised"
+    assert sm.update(0.9, "scam", 13) is None             # label switch while active needs min_on frames
+    ev = sm.update(0.9, "scam", 14)
+    assert ev and ev.status == "raised" and ev.label == "scam"
+
+
+def test_different_threat_type_ignores_cooldown():
+    sm = AlertStateMachine("threat", on=0.7, off=0.4, min_on=1, min_off=1, cooldown_s=100)
+    assert sm.update(0.9, "phishing", 0).status == "raised"
+    assert sm.update(0.1, "phishing", 1).status == "cleared"
+    assert sm.update(0.9, "phishing", 2) is None          # cooldown for the same label
+    sm2 = AlertStateMachine("threat", on=0.7, off=0.4, min_on=1, min_off=1, cooldown_s=100)
+    sm2.update(0.9, "phishing", 0)
+    sm2.update(0.1, "phishing", 1)
+    assert sm2.update(0.9, "scam", 2).status == "raised"  # a new kind of threat alerts immediately
     with pytest.raises(ValueError):
         AlertStateMachine("x", on=0.4, off=0.5)
 

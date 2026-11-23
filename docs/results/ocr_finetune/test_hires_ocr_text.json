@@ -1,0 +1,568 @@
+{
+  "checkpoint": "runs/ocr_finetune/best.pt",
+  "n": 300,
+  "text_field": "ocr_text",
+  "ocr_noise_p": 0.0,
+  "drop_text": false,
+  "model": {
+    "activity": {
+      "n": 300,
+      "accuracy": 1.0,
+      "macro_f1": 1.0,
+      "ece": 0.0023,
+      "per_class": {
+        "web_browsing": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "support": 29
+        },
+        "video_streaming": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "support": 37
+        },
+        "messaging": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "support": 35
+        },
+        "email": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "support": 30
+        },
+        "document_editing": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "support": 36
+        },
+        "code_editor": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "support": 38
+        },
+        "terminal": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "support": 27
+        },
+        "social_media": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "support": 40
+        },
+        "file_download": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "support": 28
+        }
+      },
+      "confusion": [
+        [
+          29,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          37,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          35,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          30,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          36,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          38,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          27,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          40,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          28
+        ]
+      ],
+      "classes": [
+        "web_browsing",
+        "video_streaming",
+        "messaging",
+        "email",
+        "document_editing",
+        "code_editor",
+        "terminal",
+        "social_media",
+        "file_download"
+      ]
+    },
+    "threat": {
+      "n": 300,
+      "accuracy": 0.9933,
+      "macro_f1": 0.9919,
+      "ece": 0.0027,
+      "per_class": {
+        "benign": {
+          "precision": 0.9947,
+          "recall": 0.9947,
+          "f1": 0.9947,
+          "support": 187
+        },
+        "phishing": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "support": 24
+        },
+        "scam": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "support": 32
+        },
+        "malware_download": {
+          "precision": 1.0,
+          "recall": 0.9667,
+          "f1": 0.9831,
+          "support": 30
+        },
+        "suspicious_command": {
+          "precision": 0.9643,
+          "recall": 1.0,
+          "f1": 0.9818,
+          "support": 27
+        }
+      },
+      "confusion": [
+        [
+          186,
+          0,
+          0,
+          0,
+          1
+        ],
+        [
+          0,
+          24,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          32,
+          0,
+          0
+        ],
+        [
+          1,
+          0,
+          0,
+          29,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          27
+        ]
+      ],
+      "classes": [
+        "benign",
+        "phishing",
+        "scam",
+        "malware_download",
+        "suspicious_command"
+      ],
+      "binary": {
+        "auroc": 0.9967,
+        "precision": 0.9912,
+        "recall": 0.9912,
+        "false_positive_rate": 0.0053,
+        "tpr_at_1pct_fpr": 0.9912
+      }
+    },
+    "score": 0.996
+  },
+  "decision": {
+    "model": {
+      "n": 300,
+      "accuracy": 0.9933,
+      "macro_f1": 0.9919,
+      "ece": 0.0027,
+      "per_class": {
+        "benign": {
+          "precision": 0.9947,
+          "recall": 0.9947,
+          "f1": 0.9947,
+          "support": 187
+        },
+        "phishing": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "support": 24
+        },
+        "scam": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "support": 32
+        },
+        "malware_download": {
+          "precision": 1.0,
+          "recall": 0.9667,
+          "f1": 0.9831,
+          "support": 30
+        },
+        "suspicious_command": {
+          "precision": 0.9643,
+          "recall": 1.0,
+          "f1": 0.9818,
+          "support": 27
+        }
+      },
+      "confusion": [
+        [
+          186,
+          0,
+          0,
+          0,
+          1
+        ],
+        [
+          0,
+          24,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          32,
+          0,
+          0
+        ],
+        [
+          1,
+          0,
+          0,
+          29,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          27
+        ]
+      ],
+      "classes": [
+        "benign",
+        "phishing",
+        "scam",
+        "malware_download",
+        "suspicious_command"
+      ],
+      "binary": {
+        "auroc": 0.9967,
+        "precision": 0.9912,
+        "recall": 0.9912,
+        "false_positive_rate": 0.0053,
+        "tpr_at_1pct_fpr": 0.9912
+      }
+    },
+    "rules": {
+      "n": 300,
+      "accuracy": 0.88,
+      "macro_f1": 0.8041,
+      "ece": 0.1118,
+      "per_class": {
+        "benign": {
+          "precision": 0.8738,
+          "recall": 1.0,
+          "f1": 0.9327,
+          "support": 187
+        },
+        "phishing": {
+          "precision": 0.7037,
+          "recall": 0.7917,
+          "f1": 0.7451,
+          "support": 24
+        },
+        "scam": {
+          "precision": 1.0,
+          "recall": 0.6562,
+          "f1": 0.7925,
+          "support": 32
+        },
+        "malware_download": {
+          "precision": 0.9375,
+          "recall": 0.5,
+          "f1": 0.6522,
+          "support": 30
+        },
+        "suspicious_command": {
+          "precision": 1.0,
+          "recall": 0.8148,
+          "f1": 0.898,
+          "support": 27
+        }
+      },
+      "confusion": [
+        [
+          187,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          5,
+          19,
+          0,
+          0,
+          0
+        ],
+        [
+          7,
+          4,
+          21,
+          0,
+          0
+        ],
+        [
+          11,
+          4,
+          0,
+          15,
+          0
+        ],
+        [
+          4,
+          0,
+          0,
+          1,
+          22
+        ]
+      ],
+      "classes": [
+        "benign",
+        "phishing",
+        "scam",
+        "malware_download",
+        "suspicious_command"
+      ],
+      "binary": {
+        "auroc": 0.9334,
+        "precision": 1.0,
+        "recall": 0.823,
+        "false_positive_rate": 0.0,
+        "tpr_at_1pct_fpr": 0.8319
+      }
+    },
+    "hybrid": {
+      "n": 300,
+      "accuracy": 0.9967,
+      "macro_f1": 0.9958,
+      "ece": 0.0411,
+      "per_class": {
+        "benign": {
+          "precision": 1.0,
+          "recall": 0.9947,
+          "f1": 0.9973,
+          "support": 187
+        },
+        "phishing": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "support": 24
+        },
+        "scam": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "support": 32
+        },
+        "malware_download": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "support": 30
+        },
+        "suspicious_command": {
+          "precision": 0.9643,
+          "recall": 1.0,
+          "f1": 0.9818,
+          "support": 27
+        }
+      },
+      "confusion": [
+        [
+          186,
+          0,
+          0,
+          0,
+          1
+        ],
+        [
+          0,
+          24,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          32,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          30,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          27
+        ]
+      ],
+      "classes": [
+        "benign",
+        "phishing",
+        "scam",
+        "malware_download",
+        "suspicious_command"
+      ],
+      "binary": {
+        "auroc": 1.0,
+        "precision": 0.9912,
+        "recall": 1.0,
+        "false_positive_rate": 0.0053,
+        "tpr_at_1pct_fpr": 1.0
+      }
+    }
+  },
+  "by_device": {
+    "desktop": {
+      "activity": {
+        "accuracy": 1.0,
+        "macro_f1": 1.0,
+        "n": 262
+      },
+      "threat": {
+        "accuracy": 0.9924,
+        "macro_f1": 0.9908,
+        "n": 262
+      }
+    },
+    "mobile": {
+      "activity": {
+        "accuracy": 1.0,
+        "macro_f1": 1.0,
+        "n": 38
+      },
+      "threat": {
+        "accuracy": 1.0,
+        "macro_f1": 1.0,
+        "n": 38
+      }
+    }
+  }
+}

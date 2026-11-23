@@ -168,6 +168,10 @@ def train(cfg: Config, log=print) -> Dict:
     train_dl, val_dl = _loader(train_ds, cfg, True), _loader(val_ds, cfg, False)
 
     model = build_model(cfg.model, TASKS, tuple(cfg.data.img_size), cfg.data.max_text_len).to(device)
+    if tc.init_checkpoint:
+        init = torch.load(tc.init_checkpoint, map_location=device, weights_only=False)
+        model.load_state_dict(init["state_dict"])
+        log(f"[init] warm-started from {tc.init_checkpoint}")
     criterion = MultiTaskLoss(TASKS, tc.task_weighting, tc.task_weights, tc.label_smoothing).to(device)
     n_params = count_parameters(model)
     log(f"[model] vision={cfg.model.vision} fusion={cfg.model.fusion} modalities={cfg.model.modalities} "

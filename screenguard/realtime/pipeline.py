@@ -73,7 +73,7 @@ class ScreenAnalyzer:
                                                    self.cfg.min_off, self.cfg.cooldown_s),
                        "nsfw": AlertStateMachine("nsfw", self.cfg.nsfw_on, self.cfg.nsfw_off, self.cfg.min_on,
                                                  self.cfg.min_off, self.cfg.cooldown_s)}
-        self._last: Optional[Dict] = None
+        self._raw: Optional[Dict] = None
         self._frame_id = 0
 
     # ------------------------------------------------------------------ #
@@ -81,7 +81,17 @@ class ScreenAnalyzer:
         return {t: softmax(z[0] / self.temps.get(t, 1.0)) for t, z in logits.items()}
 
     def analyze(self, image: Image.Image, now: Optional[float] = None, text: Optional[str] = None) -> Dict:
-        """Analyse one frame. ``text`` overrides OCR (useful for tests / ground-truth evaluation)."""
+        """Analyse one frame. ``text`` overrides OCR (useful for tests / ground-truth evaluation).
+
+        Unchanged frames skip OCR, the model and the rules, but the cached raw
+        prediction is still fed to the temporal smoother and the alert state
+        machine: a screen that stays the same keeps (and strengthens) its verdict.
+
+        With asynchronous OCR, a new scene is first analysed *without* text
+        (stale text from the previous screen must not leak into the verdict);
+        as soon as OCR for the current scene finishes, the model is re-run on
+        the cached frame with that text, even if the screen has not changed.
+        """
         t_start = time.perf_counter()
         now = time.time() if now is None else now
         fid = self._frame_id
@@ -91,26 +101,35 @@ class ScreenAnalyzer:
         t0 = time.perf_counter()
         changed, info = self.change.update(image, now)
         lat["change"] = (time.perf_counter() - t0) * 1000
-        if self.cfg.skip_unchanged and not changed and self._last is not None:
-            res = dict(self._last)
-            res.update({"frame": fid, "t": now, "analyzed": False, "change": info, "alerts": [],
-                        "latency_ms": {"change": round(lat["change"], 2), "total": round((time.perf_counter() - t_start) * 1000, 2)}})
-            return res
+        raw = self._raw
+        if self.cfg.skip_unchanged and not changed and raw is not None:
+            if self.async_ocr is not None and text is None:
+                result, rfid = self.async_ocr.latest()
+                if rfid >= raw["scene_fid"] and rfid > raw["ocr_fid"]:  # fresh OCR for this scene arrived
+                    self._raw = self._infer(raw["image"], result.text, f"{result.engine}(async)", rfid, raw["scene_fid"], lat)
+                    return self._finalize(self._raw, fid, now, True, info, lat, t_start)
+            return self._finalize(raw, fid, now, False, info, lat, t_start)
 
         # --- OCR --------------------------------------------------------- #
         t0 = time.perf_counter()
-        ocr_engine = "override"
+        ocr_engine, ocr_fid = "override", fid
         if text is None:
             if self.async_ocr is not None:
                 self.async_ocr.submit(image, fid)
-                result, _ = self.async_ocr.latest()
-                text, ocr_engine = result.text, f"{result.engine}(async)"
+                result, ocr_fid = self.async_ocr.latest()
+                # only use OCR that belongs to this scene; otherwise analyse image-only for now
+                text = result.text if ocr_fid >= fid else ""
+                ocr_engine = f"{result.engine}(async)" if ocr_fid >= fid else "pending(async)"
             else:
                 result = self.ocr.read(image)
                 text, ocr_engine = result.text, result.engine
         lat["ocr"] = (time.perf_counter() - t0) * 1000
+        self._raw = self._infer(image, text, ocr_engine, ocr_fid, fid, lat)
+        return self._finalize(self._raw, fid, now, True, info, lat, t_start)
 
-        # --- model ------------------------------------------------------- #
+    def _infer(self, image: Image.Image, text: str, ocr_engine: str, ocr_fid: int, scene_fid: int,
+               lat: Dict[str, float]) -> Dict:
+        """Model + rules + decision fusion for one (frame, text) pair."""
         t0 = time.perf_counter()
         x = preprocess(image, self.img_size)[None]
         ids = self.tok.encode(text)[None]
@@ -119,21 +138,24 @@ class ScreenAnalyzer:
         probs = self._probs(self.backend.infer(x, ids))
         lat["model"] = (time.perf_counter() - t0) * 1000
 
-        # --- rules + decision ------------------------------------------- #
         t0 = time.perf_counter()
         ev = analyze_text(text)
         threat_classes = self.tasks["threat"]
         p_threat_model = probs["threat"] if "threat" in self.trained else np.eye(len(threat_classes))[0]
         p_threat = fuse_threat(p_threat_model, ev.class_scores, threat_classes, self.cfg.decision)
         lat["rules"] = (time.perf_counter() - t0) * 1000
+        return {"probs": probs, "p_threat_model": p_threat_model, "p_threat": p_threat, "evidence": ev, "text": text,
+                "ocr_engine": ocr_engine, "ocr_fid": ocr_fid, "scene_fid": scene_fid, "image": image}
 
-        # --- temporal smoothing + alerts --------------------------------- #
+    def _finalize(self, raw: Dict, fid: int, now: float, analyzed: bool, info: Dict, lat: Dict[str, float],
+                  t_start: float) -> Dict:
+        """Temporal smoothing, alert state machines and result assembly."""
+        probs, ev, threat_classes = raw["probs"], raw["evidence"], self.tasks["threat"]
         p_act = self.ema.update("activity", probs["activity"])
-        p_thr = self.ema.update("threat", p_threat)
+        p_thr = self.ema.update("threat", raw["p_threat"])
         alerts = []
-        thr_label = threat_classes[int(np.argmax(p_thr[1:])) + 1]
         risk = float(1.0 - p_thr[0])
-        evt = self.alerts["threat"].update(risk, thr_label, now, ev.reasons())
+        evt = self.alerts["threat"].update(risk, threat_classes[int(np.argmax(p_thr[1:])) + 1], now, ev.reasons())
         if evt:
             alerts.append(asdict(evt))
         nsfw = {"available": False}
@@ -150,23 +172,22 @@ class ScreenAnalyzer:
         act_classes = self.tasks["activity"]
         top = np.argsort(-p_act)[:3]
         res = {
-            "frame": fid, "t": now, "analyzed": True, "change": info,
+            "frame": fid, "t": now, "analyzed": analyzed, "change": info,
             "activity": {"label": act_classes[int(top[0])], "confidence": round(float(p_act[top[0]]), 4),
                          "top3": [[act_classes[int(i)], round(float(p_act[i]), 4)] for i in top]},
             "threat": {"label": threat_classes[int(np.argmax(p_thr))], "risk": round(risk, 4),
                        "probs": {c: round(float(p), 4) for c, p in zip(threat_classes, p_thr)},
-                       "model_probs": {c: round(float(p), 4) for c, p in zip(threat_classes, p_threat_model)},
+                       "model_probs": {c: round(float(p), 4) for c, p in zip(threat_classes, raw["p_threat_model"])},
                        "rule_evidence": {k: round(v, 4) for k, v in ev.class_scores.items()},
                        "reasons": ev.reasons(), "rule_hits": [h.rule_id for h in ev.hits],
                        "urls": [{"domain": u.registered_domain, "score": round(u.score, 3)} for u in ev.urls[:5]]},
             "nsfw": nsfw,
             "alerts": alerts,
-            "ocr": {"engine": ocr_engine, "chars": len(text)},
+            "ocr": {"engine": raw["ocr_engine"] if analyzed else "skipped", "chars": len(raw["text"])},
             "latency_ms": {k: round(v, 2) for k, v in lat.items()},
-            "_text": text,  # kept in memory only; sinks never persist it unless explicitly asked (and then redacted)
+            "_text": raw["text"],  # kept in memory only; sinks never persist it unless explicitly asked (and then redacted)
         }
         res["latency_ms"]["total"] = round((time.perf_counter() - t_start) * 1000, 2)
-        self._last = res
         return res
 
     # ------------------------------------------------------------------ #
@@ -224,7 +245,7 @@ class ConsoleSink:
         return self.COLORS[k] if self.color else ""
 
     def __call__(self, res: Dict, frame=None) -> None:
-        if not res["analyzed"] and not self.show_skipped:
+        if not res["analyzed"] and not self.show_skipped and not res["alerts"]:
             return
         thr = res["threat"]
         tag = "" if res["analyzed"] else f"{self._c('dim')}(unchanged){self._c('reset')} "

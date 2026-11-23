@@ -49,6 +49,16 @@ class AlertEvent:
 
 
 class AlertStateMachine:
+    """Hysteresis alerting for one alert kind (e.g. ``threat``).
+
+    * raise when ``score >= on`` for ``min_on`` consecutive frames;
+    * clear when ``score < off`` for ``min_off`` consecutive frames;
+    * the cooldown only suppresses re-raising the *same* label (a different
+      threat type alerts immediately);
+    * if the label changes while active (e.g. phishing page -> scam page)
+      for ``min_on`` frames, a new ``raised`` event is emitted for the new label.
+    """
+
     def __init__(self, kind: str, on: float = 0.7, off: float = 0.4, min_on: int = 2, min_off: int = 3,
                  cooldown_s: float = 30.0):
         if off >= on:
@@ -57,20 +67,31 @@ class AlertStateMachine:
         self.min_on, self.min_off, self.cooldown_s = min_on, min_off, cooldown_s
         self.active = False
         self.label: Optional[str] = None
-        self._above = self._below = 0
-        self._last_raise = -1e18
+        self._above = self._below = self._switch = 0
+        self._last_raise: Dict[str, float] = {}
+
+    def _raise(self, label: str, score: float, now: float, reasons) -> AlertEvent:
+        self.active, self.label, self._below, self._switch = True, label, 0, 0
+        self._last_raise[label] = now
+        return AlertEvent(self.kind, "raised", label, round(float(score), 4), now, reasons)
 
     def update(self, score: float, label: str, now: float, reasons: Optional[List[str]] = None) -> Optional[AlertEvent]:
         if not self.active:
             self._above = self._above + 1 if score >= self.on else 0
-            if self._above >= self.min_on and (now - self._last_raise) >= self.cooldown_s:
-                self.active, self.label, self._below, self._last_raise = True, label, 0, now
-                return AlertEvent(self.kind, "raised", label, round(float(score), 4), now, reasons)
+            cooled = (now - self._last_raise.get(label, -1e18)) >= self.cooldown_s
+            if self._above >= self.min_on and cooled:
+                return self._raise(label, score, now, reasons)
+            return None
+        if score >= self.on and label != self.label:
+            self._switch += 1
+            if self._switch >= self.min_on:
+                return self._raise(label, score, now, reasons)
         else:
-            self._below = self._below + 1 if score < self.off else 0
-            if self._below >= self.min_off:
-                self.active, self._above = False, 0
-                ev = AlertEvent(self.kind, "cleared", self.label or label, round(float(score), 4), now)
-                self.label = None
-                return ev
+            self._switch = 0
+        self._below = self._below + 1 if score < self.off else 0
+        if self._below >= self.min_off:
+            self.active, self._above = False, 0
+            ev = AlertEvent(self.kind, "cleared", self.label or label, round(float(score), 4), now)
+            self.label = None
+            return ev
         return None

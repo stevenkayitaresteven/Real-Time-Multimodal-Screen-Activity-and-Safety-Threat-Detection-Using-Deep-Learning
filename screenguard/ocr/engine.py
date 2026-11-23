@@ -15,6 +15,7 @@ most recent finished OCR result.
 from __future__ import annotations
 
 import io
+import os
 import shutil
 import subprocess
 import threading
@@ -63,8 +64,11 @@ class TesseractOCR(OCREngine):
     name = "tesseract"
 
     def __init__(self, lang: str = "eng", psm: int = 11, min_conf: float = 30.0, target_height: int = 1080,
-                 max_upscale: float = 2.0, cmd: Optional[str] = None, timeout_s: float = 20.0):
+                 max_upscale: float = 2.0, cmd: Optional[str] = None, timeout_s: float = 30.0, threads: int = 1):
         self.lang, self.psm, self.min_conf = lang, psm, min_conf
+        # Tesseract's internal OpenMP threading oversubscribes the CPU when it runs next to the model or in
+        # parallel workers; one thread per call is faster overall in that setting.
+        self.env = {**os.environ, "OMP_THREAD_LIMIT": str(threads)}
         self.target_height, self.max_upscale = target_height, max_upscale
         self.cmd = cmd or shutil.which("tesseract")
         self.timeout_s = timeout_s
@@ -90,8 +94,11 @@ class TesseractOCR(OCREngine):
         g, scale = self._prepare(image)
         buf = io.BytesIO()
         g.save(buf, format="PNG")
-        proc = subprocess.run([self.cmd, "stdin", "stdout", "-l", self.lang, "--psm", str(self.psm), "tsv"],
-                              input=buf.getvalue(), capture_output=True, timeout=self.timeout_s)
+        try:
+            proc = subprocess.run([self.cmd, "stdin", "stdout", "-l", self.lang, "--psm", str(self.psm), "tsv"],
+                                  input=buf.getvalue(), capture_output=True, timeout=self.timeout_s, env=self.env)
+        except subprocess.TimeoutExpired:  # degrade gracefully: the visual pathway still works without text
+            return OCRResult("", [], (time.perf_counter() - t0) * 1000, f"{self.name}:timeout")
         words: List[OCRWord] = []
         lines: dict = {}
         for row in proc.stdout.decode("utf-8", errors="replace").splitlines()[1:]:

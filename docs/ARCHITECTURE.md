@@ -22,13 +22,13 @@ cannot tell a video player from a document.
  capture (mss / video / folder)          ~5-15 ms
    │
    ▼
- change detector (dHash + pixel diff)    <1 ms ── unchanged ──► reuse last result
+ change detector (dHash + pixel diff)    ~3 ms ── unchanged ──► reuse last result
    │ changed
-   ├──► OCR (Tesseract, sync or async)   200-1500 ms (the dominant cost; runs on change only)
+   ├──► OCR (Tesseract, sync or async)   ~350-600 ms at 720p (the dominant cost; runs on change only)
    │      └► byte tokenizer
    ├──► letterbox 144x256 + normalise     ~2 ms
    ▼
- ScreenThreatNet (vision + text + fusion + 3 heads)   ~5-20 ms on 1 CPU thread
+ ScreenThreatNet (vision + text + fusion + 3 heads)   ~7 ms on 1 CPU thread (ONNX Runtime)
    │
    ├──► temperature scaling (calibrated probabilities)
    ├──► rules + URL analysis ──► decision fusion (noisy-OR)        <2 ms
@@ -41,13 +41,13 @@ On a laptop CPU the neural model is cheap (single-digit milliseconds), so the re
 attacks this in three ways:
 
 1. **Skip unchanged frames.** Most of the time the screen is static. A 256-bit difference hash plus a 64×36 mean
-   absolute difference detects meaningful change in under a millisecond. Unchanged frames reuse the previous result
+   absolute difference detects meaningful change in ~3 ms on a 720p frame. Unchanged frames reuse the previous result
    with no OCR and no model call.
 2. **Asynchronous OCR** (`--async-ocr`). OCR runs on a background thread with "latest frame wins" semantics. The model
    always uses the most recent finished OCR result, so the visual path stays responsive at the capture frame rate even
    when OCR takes a second.
-3. **Byte-level text input.** There is no tokenizer vocabulary to load, and the text encoder downsamples bytes 8× with
-   a strided convolution, so even 1 KB of screen text costs only 128 Transformer tokens.
+3. **Byte-level text input.** There is no tokenizer vocabulary to load, and the text encoder max-pools n-gram features
+   8×, so even 1 KB of screen text costs only 128 Transformer tokens.
 
 ## 3. Model: ScreenThreatNet
 
@@ -58,16 +58,22 @@ information (where a dialog box is), and Grad-CAM works for every backbone.
 | Encoder | Params (encoder) | Notes |
 |---|---|---|
 | `tiny_cnn` | 0.34 M | MobileNetV3-style inverted residuals + squeeze-excite + hard-swish; downsamples early; trains from scratch |
-| `mobilenet_v3_small` | ~0.9 M | torchvision; can load ImageNet weights (`model.pretrained=true`) |
-| `vit_tiny` | ~1.8 M | patch-16 ViT with interpolated position embeddings, so phones and laptops can use different input sizes |
-| `efficientnet_b0`, `resnet18`, `convnext_tiny` | larger | for accuracy-oriented experiments |
+| `mobilenet_v3_small` | 1.00 M | torchvision; can load ImageNet weights (`model.pretrained=true`) |
+| `vit_tiny` | 1.98 M | patch-16 ViT with interpolated position embeddings, so phones and laptops can use different input sizes |
+| `efficientnet_b0` / `resnet18` | 4.17 M / 11.2 M | for accuracy-oriented experiments (`convnext_tiny` also available) |
 | `timm:<name>` | any | e.g. `timm:mobilevitv2_050`, `timm:efficientvit_b0` |
 
 Input frames are **letterboxed** (aspect-preserving resize plus padding) to 144×256. Squashing a 9:19.5 phone screen into
 16:9 would distort exactly the layout cues the activity head relies on.
 
 ### Text encoder (`screenguard/models/text.py`)
-Byte embedding → strided Conv1d (kernel 16, stride 8) → learned positions → 2-layer pre-norm Transformer.
+Byte embedding (64-d) → **stride-1 n-gram convolution** (kernel 7, 128 channels) → **max-pool ×8** → learned positions
+→ 2-layer pre-norm Transformer. That is 0.49 M parameters, and 1 024 bytes become 128 tokens.
+
+The convolution acts as a bank of shift-equivariant character n-gram detectors (`xn--`, `.exe`, `| bash`, `verify`),
+and max-pooling makes them locally shift-invariant. An earlier variant used a single strided convolution
+(`text_stem=strided`, a patch-style tokenizer). It must learn each keyword separately for each of 8 alignments and
+trained far more slowly (see [EXPERIMENTS.md](EXPERIMENTS.md)).
 
 Why bytes and not WordPiece:
 * OCR errors (`paypa1`, `rn`→`m`) fragment sub-word tokens unpredictably; byte models degrade gracefully.

@@ -1,7 +1,7 @@
 """Train and evaluate the ablation grid, then write results to docs/results/.
 
 Usage:
-    python scripts/run_ablations.py --epochs 5            # all variants
+    python scripts/run_ablations.py --epochs 3            # all variants
     python scripts/run_ablations.py --only text_only gated
     python scripts/run_ablations.py --eval-only           # re-evaluate existing runs
 
@@ -26,7 +26,7 @@ from screenguard.evaluate import evaluate_checkpoint, rows_to_markdown, summary_
 from screenguard.training import train  # noqa: E402
 
 VARIANTS = {
-    "attention (main)": [],
+    "attention (main config)": [],
     "image_only": ["model.modalities=[image]"],
     "text_only": ["model.modalities=[text]"],
     "concat_fusion": ["model.fusion=concat"],
@@ -34,12 +34,13 @@ VARIANTS = {
     "vit_tiny": ["model.vision=vit_tiny"],
     "mobilenet_v3_small": ["model.vision=mobilenet_v3_small"],
     "no_modality_dropout": ["model.modality_dropout=0.0"],
-    "fixed_task_weights": ["train.task_weighting=fixed"],
     "strided_text_stem": ["model.text_stem=strided"],
 }
-# All ablations share one training budget (8k screens) so differences come from the factor being varied.
-BUDGET = ["data.train_manifests=[data/synth/train/manifest.jsonl]"]
-CONDITIONS = {"clean": {}, "ocr_noise_10%": {"ocr_noise_p": 0.10}, "no_text": {"drop_text": True}}
+# All ablations share one (deliberately small) training budget -- 4k screens, 3 epochs -- so that the
+# differences come from the factor being varied and are not hidden by saturation.
+BUDGET = ["data.train_manifests=[data/synth/train/manifest_4k.jsonl]"]
+CONDITIONS = {"clean": {}, "ocr_noise_10%": {"ocr_noise_p": 0.10}, "no_text": {"drop_text": True},
+              "real_ocr": {"manifests": ["data/synth/test_hires/manifest_ocr.jsonl"], "text_field": "ocr_text"}}
 
 
 def slug(name: str) -> str:
@@ -48,7 +49,7 @@ def slug(name: str) -> str:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--epochs", type=int, default=4)
+    ap.add_argument("--epochs", type=int, default=3)
     ap.add_argument("--config", default=str(ROOT / "configs/default.yaml"))
     ap.add_argument("--only", nargs="*", default=None)
     ap.add_argument("--eval-only", action="store_true")
@@ -76,7 +77,9 @@ def main() -> None:
         cfg = Config.load(a.config)
         entry = {"overrides": overrides, "conditions": {}}
         for cond, kw in CONDITIONS.items():
-            rep = evaluate_checkpoint(str(ckpt), cfg.data.test_manifests, **kw)
+            kw = dict(kw)
+            manifests = [str(ROOT / m) for m in kw.pop("manifests", cfg.data.test_manifests)]
+            rep = evaluate_checkpoint(str(ckpt), manifests, **kw)
             entry["conditions"][cond] = summary_row(name, rep)
             entry.setdefault("full", {})[cond] = rep
         train_meta = json.loads((run_dir / "val_metrics.json").read_text())
@@ -95,6 +98,7 @@ def main() -> None:
             "activity_acc": c["clean"].get("activity_acc"), "activity_f1": c["clean"].get("activity_f1"),
             "threat_f1": c["clean"].get("threat_f1"), "threat_auroc": c["clean"].get("threat_auroc"),
             "threat_f1 (OCR noise)": c["ocr_noise_10%"].get("threat_f1"),
+            "activity_acc (real OCR)": c["real_ocr"].get("activity_acc"), "threat_f1 (real OCR)": c["real_ocr"].get("threat_f1"),
             "activity_acc (no text)": c["no_text"].get("activity_acc"), "threat_f1 (no text)": c["no_text"].get("threat_f1"),
             "hybrid_threat_f1": c["clean"].get("hybrid_threat_f1"),
         })

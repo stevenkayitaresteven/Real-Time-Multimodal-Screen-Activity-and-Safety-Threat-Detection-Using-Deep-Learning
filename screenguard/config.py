@@ -65,6 +65,7 @@ class TrainConfig:
     threads: Optional[int] = None
     amp: bool = True
     out_dir: str = "runs/default"
+    init_checkpoint: Optional[str] = None  # warm-start (fine-tuning) from an existing best.pt
     early_stop_patience: int = 4
     log_every: int = 50
 

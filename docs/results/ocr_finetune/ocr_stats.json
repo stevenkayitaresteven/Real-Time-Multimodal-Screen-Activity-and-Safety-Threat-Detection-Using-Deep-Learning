@@ -1,0 +1,7 @@
+{
+  "n": 300,
+  "char_similarity_mean": 0.8538,
+  "ocr_ms_mean": 373.8,
+  "ocr_ms_p95": 624.7,
+  "empty_ocr": 0
+}

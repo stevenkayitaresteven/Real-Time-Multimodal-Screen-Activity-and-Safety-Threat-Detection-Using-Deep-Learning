@@ -2,7 +2,7 @@
 
 * ONNX (fp32) – runs with ONNX Runtime on Windows / macOS / Linux / Android / iOS
   (and in browsers via onnxruntime-web).
-* ONNX dynamic int8 – ~3-4x smaller weights, faster Linear/MatMul on CPU.
+* ONNX dynamic int8 – int8 MatMul/Gemm weights (Transformer + MLPs); convolutions stay fp32.
 * TorchScript (optional) – for PyTorch Mobile style deployment.
 
 Every export is verified numerically against the PyTorch model.
@@ -71,7 +71,9 @@ def export_onnx(checkpoint: str, out_path: str, opset: int = 17, quantize: bool 
             from onnxruntime.quantization import QuantType, quantize_dynamic
 
             q = out.with_name(out.stem + ".int8.onnx")
-            quantize_dynamic(str(out), str(q), weight_type=QuantType.QInt8)
+            # Quantise only MatMul/Gemm (Transformer + MLP weights). Dynamic ConvInteger kernels are slower than
+            # fp32 convolutions on most CPUs, so convolutions stay in fp32.
+            quantize_dynamic(str(out), str(q), weight_type=QuantType.QInt8, op_types_to_quantize=["MatMul", "Gemm"])
             report["onnx_int8"] = str(q)
             report["onnx_int8_mb"] = round(q.stat().st_size / 2**20, 3)
             report["onnx_int8_check"] = check(str(q))
