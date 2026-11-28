@@ -14,3 +14,6 @@ exports/
 report/*.pdf
 report/*.docx
 report/assets/
+# poster: generated files stay local (the template carries the university logos)
+report/poster/*.pptx
+report/poster/*.pdf
